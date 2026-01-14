@@ -16,22 +16,23 @@ function App() {
     return claims?.roles ?? []
   }, [activeAccount])
 
-  const options = useMemo(
-    () =>
-      [
-        {
-          key: 'TodoApp',
-          label: 'To-Do App',
-          url: todoAppUrl ? `${todoAppUrl}?autoLogin=1` : undefined,
-        },
-        {
-          key: 'AuthCheckApp',
-          label: 'Auth Check',
-          url: authCheckUrl ? `${authCheckUrl}?autoLogin=1` : undefined,
-        },
-      ].filter((item) => roles.includes(item.key) && item.url),
-    [authCheckUrl, roles, todoAppUrl],
-  )
+  const options = useMemo(() => {
+    const loginHint = activeAccount?.username
+    const buildUrl = (baseUrl?: string) => {
+      if (!baseUrl) {
+        return undefined
+      }
+      const params = new URLSearchParams({ autoLogin: '1' })
+      if (loginHint) {
+        params.set('loginHint', loginHint)
+      }
+      return `${baseUrl}?${params.toString()}`
+    }
+    return [
+      { key: 'TodoApp', label: 'To-Do App', url: buildUrl(todoAppUrl) },
+      { key: 'AuthCheckApp', label: 'Auth Check', url: buildUrl(authCheckUrl) },
+    ].filter((item) => roles.includes(item.key) && item.url)
+  }, [activeAccount, authCheckUrl, roles, todoAppUrl])
 
   useEffect(() => {
     if (isAuthenticated && options.length === 1 && options[0].url) {
