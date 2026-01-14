@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from 'react'
 import './App.css'
+import { InteractionStatus } from '@azure/msal-browser'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { loginRequest } from './auth/authConfig'
 
 function App() {
-  const { instance, accounts } = useMsal()
+  const { instance, accounts, inProgress } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const activeAccount = instance.getActiveAccount() ?? accounts[0] ?? null
 
@@ -35,10 +36,15 @@ function App() {
   }, [activeAccount, authCheckUrl, roles, todoAppUrl])
 
   useEffect(() => {
-    if (isAuthenticated && options.length === 1 && options[0].url) {
+    if (
+      isAuthenticated &&
+      inProgress === InteractionStatus.None &&
+      options.length === 1 &&
+      options[0].url
+    ) {
       window.location.assign(options[0].url)
     }
-  }, [isAuthenticated, options])
+  }, [inProgress, isAuthenticated, options])
 
   return (
     <div className="page">
@@ -47,7 +53,10 @@ function App() {
         {!isAuthenticated ? (
           <>
             <p className="hint">Sign in to see your apps.</p>
-            <button onClick={() => instance.loginRedirect(loginRequest)}>
+            <button
+              onClick={() => instance.loginRedirect(loginRequest)}
+              disabled={inProgress !== InteractionStatus.None}
+            >
               Sign in
             </button>
           </>
@@ -59,6 +68,7 @@ function App() {
               onClick={() =>
                 instance.logoutRedirect({ postLogoutRedirectUri: '/' })
               }
+              disabled={inProgress !== InteractionStatus.None}
             >
               Sign out
             </button>
@@ -84,6 +94,7 @@ function App() {
               onClick={() =>
                 instance.logoutRedirect({ postLogoutRedirectUri: '/' })
               }
+              disabled={inProgress !== InteractionStatus.None}
             >
               Sign out
             </button>
