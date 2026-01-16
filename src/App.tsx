@@ -1,104 +1,86 @@
-import { useEffect, useMemo } from 'react'
-import './App.css'
-import { InteractionStatus } from '@azure/msal-browser'
+import { useEffect } from 'react'
+import '@/App.css'
+import { InteractionStatus, type AccountInfo } from '@azure/msal-browser'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { loginRequest } from './auth/authConfig'
+import type { PortalSite } from '@/types'
+import SignInButton from '@/components/SignInButton'
+import NoSites from '@/components/NoSites'
+import PortalSitesList from './components/PortalSitesList'
 
-function App() {
+const buildUrl = (baseUrl?: string, loginHint?: string) => {
+  if (!baseUrl) return undefined
+
+  const params = new URLSearchParams({ autoLogin: '1' })
+  if (loginHint) params.set('loginHint', loginHint)
+
+  return `${baseUrl}?${params.toString()}`
+}
+
+const getRolesFromToken = (account: AccountInfo) => account?.idTokenClaims?.roles ?? []
+
+const canAccessSite = (site: PortalSite, roles: string[]) =>
+  roles.includes(site.key) && site.url
+
+const buildPortalSites = (loginHint: string, roles: string[]): PortalSite[] => {
+  const customerPortalUrl = import.meta.env.VITE_APP_CUSTOMER_PORTAL_URL
+  const customerPortalRole = import.meta.env.VITE_APP_CUSTOMER_PORTAL_ROLE
+  const orderPortalUrl = import.meta.env.VITE_APP_ORDER_PORTAL_URL
+  const orderPortalRole = import.meta.env.VITE_APP_ORDER_PORTAL_ROLE
+
+  const allSites = [
+    {
+      key: customerPortalRole,
+      label: 'Customer Portal',
+      url: buildUrl(customerPortalUrl, loginHint)
+    },
+    {
+      key: orderPortalRole,
+      label: 'Order Portal',
+      url: buildUrl(orderPortalUrl, loginHint)
+    }
+  ]
+
+  return allSites.filter((site) => canAccessSite(site, roles))
+}
+
+const shouldAutoRedirect = (
+  portalSites: PortalSite[],
+  isAuthenticated: boolean,
+  inProgress: InteractionStatus
+): boolean =>
+  isAuthenticated &&
+  inProgress === InteractionStatus.None &&
+  portalSites.length === 1 &&
+  portalSites[0]?.url != null &&
+  portalSites[0]?.url.length > 0
+
+const App = () => {
   const { instance, accounts, inProgress } = useMsal()
   const isAuthenticated = useIsAuthenticated()
   const activeAccount = instance.getActiveAccount() ?? accounts[0] ?? null
+  const loginHint = activeAccount?.username
 
-  const todoAppUrl = import.meta.env.VITE_TODO_APP_URL as string | undefined
-  const authCheckUrl = import.meta.env.VITE_AUTH_CHECK_URL as string | undefined
-
-  const roles = useMemo(() => {
-    const claims = activeAccount?.idTokenClaims as { roles?: string[] } | undefined
-    return claims?.roles ?? []
-  }, [activeAccount])
-
-  const options = useMemo(() => {
-    const loginHint = activeAccount?.username
-    const buildUrl = (baseUrl?: string) => {
-      if (!baseUrl) {
-        return undefined
-      }
-      const params = new URLSearchParams({ autoLogin: '1' })
-      if (loginHint) {
-        params.set('loginHint', loginHint)
-      }
-      return `${baseUrl}?${params.toString()}`
-    }
-    return [
-      { key: 'TodoApp', label: 'To-Do App', url: buildUrl(todoAppUrl) },
-      { key: 'AuthCheckApp', label: 'Auth Check', url: buildUrl(authCheckUrl) },
-    ].filter((item) => roles.includes(item.key) && item.url)
-  }, [activeAccount, authCheckUrl, roles, todoAppUrl])
+  const roles = getRolesFromToken(activeAccount)
+  const portalSites = buildPortalSites(loginHint, roles)
 
   useEffect(() => {
     if (
-      isAuthenticated &&
-      inProgress === InteractionStatus.None &&
-      options.length === 1 &&
-      options[0].url
-    ) {
-      window.location.assign(options[0].url)
-    }
-  }, [inProgress, isAuthenticated, options])
+      shouldAutoRedirect(portalSites, isAuthenticated, inProgress) &&
+      portalSites[0].url
+    )
+      window.location.assign(portalSites[0].url)
+  }, [inProgress, isAuthenticated, portalSites])
 
   return (
     <div className="page">
       <div className="card">
-        <h1>Portal</h1>
+        <h1 className="text-2xl font-bold">AGI Portal Hub</h1>
         {!isAuthenticated ? (
-          <>
-            <p className="hint">Sign in to see your apps.</p>
-            <button
-              onClick={() => instance.loginRedirect(loginRequest)}
-              disabled={inProgress !== InteractionStatus.None}
-            >
-              Sign in
-            </button>
-          </>
-        ) : options.length === 0 ? (
-          <>
-            <p className="hint">No apps assigned to your account.</p>
-            <button
-              className="secondary"
-              onClick={() =>
-                instance.logoutRedirect({ postLogoutRedirectUri: '/' })
-              }
-              disabled={inProgress !== InteractionStatus.None}
-            >
-              Sign out
-            </button>
-          </>
+          <SignInButton />
+        ) : portalSites.length === 0 ? (
+          <NoSites />
         ) : (
-          <>
-            <p className="hint">
-              Choose an app to continue.
-            </p>
-            <div className="list">
-              {options.map((option) => (
-                <button
-                  key={option.key}
-                  className="link"
-                  onClick={() => window.location.assign(option.url as string)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <button
-              className="secondary"
-              onClick={() =>
-                instance.logoutRedirect({ postLogoutRedirectUri: '/' })
-              }
-              disabled={inProgress !== InteractionStatus.None}
-            >
-              Sign out
-            </button>
-          </>
+          <PortalSitesList portalSites={portalSites} />
         )}
         {isAuthenticated && activeAccount ? (
           <p className="meta">Signed in as {activeAccount.username}</p>
